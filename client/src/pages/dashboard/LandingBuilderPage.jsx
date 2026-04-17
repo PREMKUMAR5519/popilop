@@ -785,6 +785,8 @@ export default function LandingBuilderPage() {
   const [openMenu, setOpenMenu] = useState(null);
   const [renamingPageId, setRenamingPageId] = useState(null);
   const [pageNameDraft, setPageNameDraft] = useState('');
+  const [pageDropdownOpen, setPageDropdownOpen] = useState(false);
+  const pageDropdownRef = useRef(null);
   const [mainPageId, setMainPageId] = useState(null);
 
   const menuRef = useRef(null);
@@ -834,6 +836,17 @@ export default function LandingBuilderPage() {
       })
     })));
   }, [creatorProfile]);
+
+  useEffect(() => {
+    if (!pageDropdownOpen) return;
+    const handleClickOutside = event => {
+      if (pageDropdownRef.current && !pageDropdownRef.current.contains(event.target)) {
+        setPageDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [pageDropdownOpen]);
 
   const markDirty = () => setDirty(true);
   const activePage = pages.find(page => page.id === activePageId) || pages[0] || null;
@@ -1104,93 +1117,64 @@ export default function LandingBuilderPage() {
                       Add block
                     </button>
                   </div>
-                  <div className="pb_page-panel">
-                    <div className="pb_page-panel__head">
-                      <span className="pb_page-panel__label">Pages</span>
-                      <button className="pb_page-panel__add" type="button" onClick={handleAddPage}>
-                        <IconPlus size={14} />
-                        + Page
+                  <div className="pb_page-switcher">
+                    <div className="pb_page-switcher__dropdown" ref={pageDropdownRef}>
+                      <button
+                        className="pb_page-switcher__trigger"
+                        type="button"
+                        onClick={() => setPageDropdownOpen(prev => !prev)}
+                      >
+                        {renamingPageId === activePageId ? (
+                          <input
+                            className="pb_page-switcher__rename-input"
+                            value={pageNameDraft}
+                            autoFocus
+                            onClick={event => event.stopPropagation()}
+                            onChange={event => setPageNameDraft(event.target.value)}
+                            onBlur={() => handleCommitPageRename(activePageId)}
+                            onKeyDown={event => {
+                              if (event.key === 'Enter') {
+                                event.preventDefault();
+                                handleCommitPageRename(activePageId);
+                              }
+                              if (event.key === 'Escape') {
+                                setRenamingPageId(null);
+                                setPageNameDraft('');
+                              }
+                            }}
+                          />
+                        ) : (
+                          <span className="pb_page-switcher__label">{activePageName}</span>
+                        )}
+                        <IconChevronDown size={14} />
                       </button>
-                    </div>
-                    <div className="pb_page-main-field">
-                      <label htmlFor="pb-main-page">Main portfolio page</label>
-                      <div className="pb_page-main-field__control">
-                        <select
-                          id="pb-main-page"
-                          value={mainPageId || ''}
-                          onChange={event => {
-                            setMainPageId(event.target.value);
-                            markDirty();
-                          }}
-                        >
-                          {pages.map(page => (
-                            <option key={page.id} value={page.id}>
-                              {page.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                    <div className="pb_page-panel__list">
-                      {pages.map(page => {
-                        const isActivePage = page.id === activePageId;
-                        const isRenaming = page.id === renamingPageId;
-                        const isMainPage = page.id === mainPageId;
-                        const liveSections = (page.blocks || []).filter(block => block.isVisible !== false).length;
 
-                        return (
-                          <div key={page.id} className={`pb_page-chip${isActivePage ? ' pb_page-chip--active' : ''}`}>
-                            <button
-                              className="pb_page-chip__main"
-                              type="button"
-                              aria-pressed={isActivePage}
-                              onClick={() => handleSelectPage(page.id)}
-                            >
-                              {isRenaming ? (
-                                <input
-                                  className="pb_page-chip__input"
-                                  value={pageNameDraft}
-                                  autoFocus
-                                  onChange={event => setPageNameDraft(event.target.value)}
-                                  onClick={event => event.stopPropagation()}
-                                  onBlur={() => handleCommitPageRename(page.id)}
-                                  onKeyDown={event => {
-                                    if (event.key === 'Enter') {
-                                      event.preventDefault();
-                                      handleCommitPageRename(page.id);
-                                    }
-
-                                    if (event.key === 'Escape') {
-                                      setRenamingPageId(null);
-                                      setPageNameDraft('');
-                                    }
-                                  }}
-                                />
-                              ) : (
-                                <>
-                                  <div className="pb_page-chip__title-row">
-                                    <strong>{page.name}</strong>
-                                    {isMainPage ? <span className="pb_page-chip__badge">Main</span> : null}
-                                  </div>
-                                  <span>{liveSections} live sections</span>
-                                </>
-                              )}
-                            </button>
-                            <button
-                              className="pb_page-chip__edit"
-                              type="button"
-                              aria-label={`Rename ${page.name}`}
-                              onClick={event => {
-                                event.stopPropagation();
-                                handleStartPageRename(page);
-                              }}
-                            >
-                              <IconEdit size={13} />
-                            </button>
-                          </div>
-                        );
-                      })}
+                      {pageDropdownOpen && pages.length > 1 && (
+                        <div className="pb_page-switcher__menu">
+                          {pages.map(page => {
+                            const isActive = page.id === activePageId;
+                            return (
+                              <button
+                                key={page.id}
+                                className={`pb_page-switcher__item${isActive ? ' pb_page-switcher__item--active' : ''}`}
+                                type="button"
+                                onClick={() => {
+                                  handleSelectPage(page.id);
+                                  setPageDropdownOpen(false);
+                                }}
+                              >
+                                {page.name}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
+
+                    <button className="pb_page-switcher__new" type="button" onClick={() => { handleAddPage(); setPageDropdownOpen(false); }}>
+                      <IconPlus size={14} />
+                      <span>New Page</span>
+                    </button>
                   </div>
                   <div className="pb_block-list">
                     {blocks.length === 0 && (
