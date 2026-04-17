@@ -1,0 +1,99 @@
+@use '../abstracts/mixins' as *;
+
+#root {
+  min-height: 100vh;
+}
+
+.l_page,
+.l_section {
+  @include container;
+}
+
+.l_page {
+  padding: 48px 0 88px;
+}
+
+.l_section {
+  padding: 56px 0;
+}
+
+.l_section--narrow {
+  max-width: 1020px;
+}
+
+.l_grid {
+  display: grid;
+  gap: 24px;
+}
+
+.l_grid--2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.l_grid--3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.l_grid--4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.l_grid--2-1 {
+  grid-template-columns: minmax(0, 2fr) minmax(300px, 1fr);
+}
+
+.c_page-stack {
+  display: grid;
+  gap: 24px;
+}
+
+.c_form-stack,
+.c_stack-list {
+  display: grid;
+  gap: 16px;
+}
+
+.c_inline-actions,
+.c_tag-row,
+.c_section-intro__actions,
+.p_home__hero-actions,
+.p_creator__cta-row,
+.l_dashboard-topbar__actions,
+.p_auth__footer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.c_summary-row,
+.c_list-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+}
+
+.c_feature-list {
+  display: grid;
+  gap: 10px;
+  padding: 0;
+  margin: 20px 0 24px;
+  list-style: none;
+}
+
+.c_feature-list li::before {
+  content: '•';
+  color: var(--accent);
+  margin-right: 10px;
+}
+
+@include respond(md) {
+  .l_grid--2,
+  .l_grid--3,
+  .l_grid--4,
+  .l_grid--2-1 {
+    grid-template-columns: 1fr;
+  }
+}
+

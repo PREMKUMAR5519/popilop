@@ -1,0 +1,72 @@
+.c_badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  background: var(--surface-muted);
+  color: var(--text);
+}
+
+.c_badge--accent {
+  background: rgba(255, 107, 87, 0.14);
+  color: var(--accent-strong);
+}
+
+.c_badge--success {
+  background: rgba(14, 166, 127, 0.14);
+  color: var(--accent-success);
+}
+
+.c_toast-stack {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  display: grid;
+  gap: 12px;
+  z-index: 40;
+}
+
+.c_toast {
+  min-width: 240px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  color: white;
+  background: var(--text);
+  box-shadow: var(--shadow-lg);
+}
+
+.c_toast--success {
+  background: linear-gradient(135deg, #118c6c, #0ea67f);
+}
+
+.c_toast--error {
+  background: linear-gradient(135deg, #c84545, #e35d5d);
+}
+
+.c_empty-state {
+  text-align: center;
+  padding: 48px 24px;
+}
+
+.c_empty-state__orb {
+  width: 64px;
+  height: 64px;
+  border-radius: 20px;
+  margin: 0 auto 20px;
+  background: linear-gradient(135deg, rgba(255, 107, 87, 0.2), rgba(31, 122, 255, 0.18));
+}
+
+.c_chart {
+  height: 320px;
+}
+
+.c_route-loading {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  color: var(--text-soft);
+}

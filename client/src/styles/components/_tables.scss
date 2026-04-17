@@ -1,0 +1,29 @@
+.c_table-wrap {
+  overflow: auto;
+}
+
+.c_table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.c_table th,
+.c_table td {
+  padding: 14px 10px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  font-size: 0.96rem;
+}
+
+.c_table th {
+  color: var(--text-faint);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.73rem;
+}
+
+.c_table td {
+  color: var(--text);
+}
+
