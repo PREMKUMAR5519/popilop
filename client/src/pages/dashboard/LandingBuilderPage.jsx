@@ -120,6 +120,23 @@ function IconChevronDown({ size = 14 }) {
   );
 }
 
+function IconHome({ size = 16 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1h-5v-6h-6v6H4a1 1 0 01-1-1V9.5z" />
+    </svg>
+  );
+}
+
+function IconFile({ size = 16 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+      <polyline points="14 2 14 8 20 8" />
+    </svg>
+  );
+}
+
 // ─── Theme Definitions ────────────────────────────────────────────────────────
 
 const THEMES = [
@@ -389,6 +406,8 @@ function PhonePreview({ blocks, themeId }) {
 }
 
 const DEFAULT_PAGE_NAME = 'My Page';
+const TRANSPARENT_DRAG_IMAGE =
+  'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';
 
 function createPageId() {
   return `page-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -444,13 +463,14 @@ function normalizeBlocks(rawBlocks = [], creatorProfile) {
   ];
 }
 
-function createPageRecord({ id, name, theme, meta, blocks, creatorProfile }) {
+function createPageRecord({ id, name, theme, meta, blocks, creatorProfile, hiddenFromNav }) {
   const pageName = (name || meta?.title || DEFAULT_PAGE_NAME).trim() || DEFAULT_PAGE_NAME;
 
   return {
     id: id || createPageId(),
     name: pageName,
     theme: theme || 'aurora',
+    hiddenFromNav: !!hiddenFromNav,
     meta: {
       slug: meta?.slug || slugifyPageName(pageName),
       title: meta?.title || pageName,
@@ -470,6 +490,7 @@ function buildBuilderPages(landingPage, creatorProfile) {
         theme: page.theme,
         meta: page.meta,
         blocks: page.blocks,
+        hiddenFromNav: page.hiddenFromNav,
         creatorProfile
       })
     );
@@ -768,6 +789,282 @@ function ThemePicker({ onSelect }) {
   );
 }
 
+// ─── Manage Pages Modal ───────────────────────────────────────────────────────
+
+function ManagePagesModal({
+  pages,
+  mainPageId,
+  creatorPublicSlug,
+  onClose,
+  onReorder,
+  onRename,
+  onDelete,
+  onToggleHidden,
+  onSetMain,
+  onAdd,
+  onCopyUrl
+}) {
+  const [openMenuId, setOpenMenuId] = useState(null);
+  const [renamingId, setRenamingId] = useState(null);
+  const [renameDraft, setRenameDraft] = useState('');
+  const [dragId, setDragId] = useState(null);
+  const [dragOverId, setDragOverId] = useState(null);
+  const [isDropSettling, setIsDropSettling] = useState(false);
+  const menuRef = useRef(null);
+  const dragImageRef = useRef(null);
+  const settleFrameRef = useRef(null);
+  const dragIdRef = useRef(null);
+  const pendingDropRef = useRef(null);
+
+  useEffect(() => {
+    const img = new Image();
+    img.src = TRANSPARENT_DRAG_IMAGE;
+    dragImageRef.current = img;
+  }, []);
+
+  useEffect(() => () => {
+    if (settleFrameRef.current) {
+      cancelAnimationFrame(settleFrameRef.current);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!openMenuId) return;
+    const handleClick = event => {
+      if (menuRef.current && !menuRef.current.contains(event.target)) {
+        setOpenMenuId(null);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [openMenuId]);
+
+  const buildPageUrl = page => {
+    const slug = page.meta?.slug || slugifyPageName(page.name);
+    if (page.id === mainPageId) return `${window.location.origin}/${creatorPublicSlug}`;
+    return `${window.location.origin}/${creatorPublicSlug}/${slug}`;
+  };
+
+  const commitRename = id => {
+    const next = renameDraft.trim();
+    if (next) onRename(id, next);
+    setRenamingId(null);
+    setRenameDraft('');
+  };
+
+  const handleDragStart = (event, id) => {
+    dragIdRef.current = id;
+    pendingDropRef.current = null;
+    setDragId(id);
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', id);
+    // Use an invisible drag image so the browser doesn't animate the default
+    // drag ghost back into the list after drop.
+    if (dragImageRef.current) {
+      event.dataTransfer.setDragImage(dragImageRef.current, 0, 0);
+    }
+  };
+
+  const handleDragOver = (event, id) => {
+    if (!dragId || dragId === id) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    setDragOverId(id);
+  };
+
+  const handleDrop = (event, id) => {
+    event.preventDefault();
+    if (dragIdRef.current && dragIdRef.current !== id) {
+      pendingDropRef.current = { fromId: dragIdRef.current, toId: id };
+    } else {
+      pendingDropRef.current = null;
+    }
+    setDragOverId(null);
+  };
+
+  const handleDragEnd = () => {
+    const pendingDrop = pendingDropRef.current;
+
+    if (pendingDrop?.fromId && pendingDrop?.toId && pendingDrop.fromId !== pendingDrop.toId) {
+      setIsDropSettling(true);
+      onReorder(pendingDrop.fromId, pendingDrop.toId);
+      if (settleFrameRef.current) {
+        cancelAnimationFrame(settleFrameRef.current);
+      }
+      settleFrameRef.current = requestAnimationFrame(() => {
+        settleFrameRef.current = requestAnimationFrame(() => {
+          setIsDropSettling(false);
+          settleFrameRef.current = null;
+        });
+      });
+    }
+
+    dragIdRef.current = null;
+    pendingDropRef.current = null;
+    setDragId(null);
+    setDragOverId(null);
+  };
+
+  return (
+    <div className="pb_backdrop" onClick={event => event.target === event.currentTarget && onClose()}>
+      <div className="pb_modal pb_manage-pages">
+        <div className="pb_modal__header pb_manage-pages__header">
+          <div>
+            <h3>Manage Pages</h3>
+            <p className="pb_manage-pages__subtitle">
+              Drag and drop the pages to re-arrange how they appear on your page.
+            </p>
+          </div>
+          <button onClick={onClose} aria-label="Close">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+          </button>
+        </div>
+
+        <div className="pb_modal__body pb_manage-pages__body">
+          <div className="pb_manage-pages__section-label">Navigation</div>
+          <div
+            className={[
+              'pb_manage-pages__list',
+              dragId ? 'pb_manage-pages__list--dragging' : '',
+              isDropSettling ? 'pb_manage-pages__list--settling' : ''
+            ].filter(Boolean).join(' ')}
+          >
+            {pages.map(page => {
+              const isMain = page.id === mainPageId;
+              const isHidden = !!page.hiddenFromNav;
+              const slug = page.meta?.slug || slugifyPageName(page.name);
+              const path = isMain ? '/home' : `/${slug}`;
+              const isRenaming = renamingId === page.id;
+              const isDragOver = dragOverId === page.id && dragId && dragId !== page.id;
+
+              return (
+                <div
+                  key={page.id}
+                  className={[
+                    'pb_manage-page',
+                    isMain ? 'pb_manage-page--main' : '',
+                    isHidden ? 'pb_manage-page--hidden' : '',
+                    isDragOver ? 'pb_manage-page--over' : '',
+                    dragId === page.id ? 'pb_manage-page--dragging' : ''
+                  ].filter(Boolean).join(' ')}
+                  draggable={!isRenaming}
+                  onDragStart={event => handleDragStart(event, page.id)}
+                  onDragOver={event => handleDragOver(event, page.id)}
+                  onDrop={event => handleDrop(event, page.id)}
+                  onDragEnd={handleDragEnd}
+                >
+                  <span className="pb_manage-page__lead">
+                    {isMain ? <IconHome size={18} /> : (
+                      <>
+                        <span className="pb_manage-page__grip"><IconGrip size={14} /></span>
+                        <IconFile size={18} />
+                      </>
+                    )}
+                  </span>
+ 
+                  <div className="pb_manage-page__body-col">
+                    {isRenaming ? (
+                      <input
+                        className="pb_manage-page__rename-input"
+                        autoFocus
+                        value={renameDraft}
+                        onChange={event => setRenameDraft(event.target.value)}
+                        onBlur={() => commitRename(page.id)}
+                        onKeyDown={event => {
+                          if (event.key === 'Enter') {
+                            event.preventDefault();
+                            commitRename(page.id);
+                          }
+                          if (event.key === 'Escape') {
+                            setRenamingId(null);
+                            setRenameDraft('');
+                          }
+                        }}
+                      />
+                    ) : (
+                      <>
+                        <strong>{isMain ? 'home' : page.name}</strong>
+                        <span>{path}</span>
+                      </>
+                    )}
+                  </div>
+ 
+                  <div className="pb_manage-page__menu-wrap" ref={openMenuId === page.id ? menuRef : null}>
+                    <button
+                      className="pb_icon-btn"
+                      type="button"
+                      onClick={event => {
+                        event.stopPropagation();
+                        setOpenMenuId(openMenuId === page.id ? null : page.id);
+                      }}
+                      aria-label="Page options"
+                    >
+                      <IconDots />
+                    </button>
+                    {openMenuId === page.id && (
+                      <div className="pb_dropdown pb_manage-page__dropdown" onClick={event => event.stopPropagation()}>
+                        <button onClick={() => {
+                          setRenamingId(page.id);
+                          setRenameDraft(page.name);
+                          setOpenMenuId(null);
+                        }}>
+                          <IconEdit /> Rename page
+                        </button>
+                        <button onClick={() => {
+                          window.open(buildPageUrl(page), '_blank', 'noopener,noreferrer');
+                          setOpenMenuId(null);
+                        }}>
+                          <IconExternalLink /> Open in new tab
+                        </button>
+                        <button onClick={() => {
+                          onCopyUrl(buildPageUrl(page));
+                          setOpenMenuId(null);
+                        }}>
+                          <IconLink /> Copy URL
+                        </button>
+                        {!isMain && (
+                          <button onClick={() => {
+                            onToggleHidden(page.id);
+                            setOpenMenuId(null);
+                          }}>
+                            {isHidden ? <IconEye /> : <IconEyeOff />}
+                            {isHidden ? 'Show in navigation' : 'Hide from navigation'}
+                          </button>
+                        )}
+                        {!isMain && pages.length > 1 && (
+                          <>
+                            <div className="pb_dropdown__divider" />
+                            <button
+                              className="pb_dropdown__danger"
+                              onClick={() => {
+                                onDelete(page.id);
+                                setOpenMenuId(null);
+                              }}
+                            >
+                              <IconTrash /> Delete
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="pb_manage-pages__footer">
+          <button className="pb_manage-pages__add" type="button" onClick={onAdd}>
+            <IconPlus size={14} />
+            Add a page
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function LandingBuilderPage() {
@@ -788,6 +1085,14 @@ export default function LandingBuilderPage() {
   const [pageDropdownOpen, setPageDropdownOpen] = useState(false);
   const pageDropdownRef = useRef(null);
   const [mainPageId, setMainPageId] = useState(null);
+  const [managePagesOpen, setManagePagesOpen] = useState(false);
+  const [pageMenuOpenId, setPageMenuOpenId] = useState(null);
+  const [pageDrag, setPageDrag] = useState(null);
+  const pageMenuRef = useRef(null);
+  const pageRowRefs = useRef({});
+  const pagePendingDragRef = useRef(null);
+  const [newPagePopupOpen, setNewPagePopupOpen] = useState(false);
+  const [newPageDraft, setNewPageDraft] = useState('');
 
   const menuRef = useRef(null);
 
@@ -842,11 +1147,23 @@ export default function LandingBuilderPage() {
     const handleClickOutside = event => {
       if (pageDropdownRef.current && !pageDropdownRef.current.contains(event.target)) {
         setPageDropdownOpen(false);
+        setPageMenuOpenId(null);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [pageDropdownOpen]);
+
+  useEffect(() => {
+    if (!pageMenuOpenId) return;
+    const handleClick = event => {
+      if (pageMenuRef.current && !pageMenuRef.current.contains(event.target)) {
+        setPageMenuOpenId(null);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [pageMenuOpenId]);
 
   const markDirty = () => setDirty(true);
   const activePage = pages.find(page => page.id === activePageId) || pages[0] || null;
@@ -867,9 +1184,10 @@ export default function LandingBuilderPage() {
     setEditingBlock(null);
   };
 
-  const handleAddPage = () => {
+  const handleAddPage = (customName) => {
+    const name = (customName || '').trim() || `Page ${pages.length + 1}`;
     const nextPage = createPageRecord({
-      name: `Page ${pages.length + 1}`,
+      name,
       theme: activePage?.theme || 'aurora',
       creatorProfile
     });
@@ -879,8 +1197,75 @@ export default function LandingBuilderPage() {
     setMainPageId(prev => prev || nextPage.id);
     setOpenMenu(null);
     setEditingBlock(null);
-    setRenamingPageId(nextPage.id);
-    setPageNameDraft(nextPage.name);
+    if (!customName) {
+      setRenamingPageId(nextPage.id);
+      setPageNameDraft(nextPage.name);
+    }
+    markDirty();
+  };
+
+  const handleReorderPages = (fromId, toId, position = 'above') => {
+    setPages(prev => {
+      const fromIdx = prev.findIndex(p => p.id === fromId);
+      const toIdx = prev.findIndex(p => p.id === toId);
+      if (fromIdx < 0 || toIdx < 0 || fromIdx === toIdx) return prev;
+      const next = [...prev];
+      const [moved] = next.splice(fromIdx, 1);
+      const adjustedToIdx = fromIdx < toIdx ? toIdx - 1 : toIdx;
+      const insertAt = position === 'below' ? adjustedToIdx + 1 : adjustedToIdx;
+      next.splice(insertAt, 0, moved);
+      return next;
+    });
+    markDirty();
+  };
+
+  const handleRenamePage = (pageId, nextName) => {
+    const clean = (nextName || '').trim() || DEFAULT_PAGE_NAME;
+    setPages(prev =>
+      prev.map(page => {
+        if (page.id !== pageId) return page;
+        const currentSlug = page.meta?.slug || '';
+        const shouldSyncSlug = !currentSlug || currentSlug === slugifyPageName(page.name);
+        return {
+          ...page,
+          name: clean,
+          meta: {
+            ...page.meta,
+            title: clean,
+            slug: shouldSyncSlug ? slugifyPageName(clean) : currentSlug
+          }
+        };
+      })
+    );
+    markDirty();
+  };
+
+  const handleDeletePage = pageId => {
+    if (pages.length <= 1) {
+      toast('You need at least one page.', 'error');
+      return;
+    }
+    if (pageId === mainPageId) {
+      toast('Set another page as main before deleting this one.', 'error');
+      return;
+    }
+    setPages(prev => prev.filter(page => page.id !== pageId));
+    if (activePageId === pageId) {
+      const fallback = pages.find(page => page.id !== pageId);
+      setActivePageId(fallback?.id || null);
+    }
+    markDirty();
+  };
+
+  const handleTogglePageHidden = pageId => {
+    setPages(prev => prev.map(page =>
+      page.id === pageId ? { ...page, hiddenFromNav: !page.hiddenFromNav } : page
+    ));
+    markDirty();
+  };
+
+  const handleSetMainPage = pageId => {
+    setMainPageId(pageId);
     markDirty();
   };
 
@@ -913,6 +1298,85 @@ export default function LandingBuilderPage() {
     setRenamingPageId(null);
     setPageNameDraft('');
     markDirty();
+  };
+
+  const computePageDragTargetIndex = (pageId, deltaY) => {
+    const draggable = pages.filter(p => p.id !== mainPageId);
+    const origIdx = draggable.findIndex(p => p.id === pageId);
+    if (origIdx < 0) return origIdx;
+    const rowEl = pageRowRefs.current[pageId];
+    const rowHeight = rowEl ? rowEl.getBoundingClientRect().height + 8 : 48;
+    const steps = Math.round(deltaY / rowHeight);
+    return Math.max(0, Math.min(draggable.length - 1, origIdx + steps));
+  };
+
+  const handlePageRowPointerDown = (event, page) => {
+    if (page.id === mainPageId) return;
+    if (event.button !== 0) return;
+    if (event.target.closest && event.target.closest('button, input, a')) return;
+    pagePendingDragRef.current = {
+      pageId: page.id,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY
+    };
+  };
+
+  const handlePageRowPointerMove = (event, page) => {
+    const pending = pagePendingDragRef.current;
+    if (pending && pending.pointerId === event.pointerId && pending.pageId === page.id) {
+      const dx = Math.abs(event.clientX - pending.startX);
+      const dy = Math.abs(event.clientY - pending.startY);
+      if (dx > 4 || dy > 4) {
+        try { event.currentTarget.setPointerCapture(event.pointerId); } catch (err) { /* ignore */ }
+        setPageDrag({
+          pageId: pending.pageId,
+          pointerId: pending.pointerId,
+          startY: pending.startY,
+          currentY: event.clientY
+        });
+        pagePendingDragRef.current = null;
+      }
+      return;
+    }
+    setPageDrag(prev => {
+      if (!prev || prev.pointerId !== event.pointerId) return prev;
+      return { ...prev, currentY: event.clientY };
+    });
+  };
+
+  const handlePageRowPointerUp = (event, page) => {
+    const pending = pagePendingDragRef.current;
+    if (pending && pending.pointerId === event.pointerId) {
+      pagePendingDragRef.current = null;
+      return;
+    }
+    setPageDrag(prev => {
+      if (!prev || prev.pointerId !== event.pointerId) return prev;
+      const deltaY = prev.currentY - prev.startY;
+      const draggable = pages.filter(p => p.id !== mainPageId);
+      const origIdx = draggable.findIndex(p => p.id === prev.pageId);
+      const targetIdx = computePageDragTargetIndex(prev.pageId, deltaY);
+      if (origIdx >= 0 && targetIdx >= 0 && targetIdx !== origIdx) {
+        setPages(previous => {
+          const nonMain = previous.filter(p => p.id !== mainPageId);
+          const origIdxInPrev = nonMain.findIndex(p => p.id === prev.pageId);
+          if (origIdxInPrev < 0) return previous;
+          const [moved] = nonMain.splice(origIdxInPrev, 1);
+          nonMain.splice(targetIdx, 0, moved);
+          let nonMainIdx = 0;
+          return previous.map(p => p.id === mainPageId ? p : nonMain[nonMainIdx++]);
+        });
+        markDirty();
+      }
+      return null;
+    });
+    try { event.currentTarget.releasePointerCapture(event.pointerId); } catch (err) { /* ignore */ }
+  };
+
+  const handlePageRowPointerCancel = event => {
+    pagePendingDragRef.current = null;
+    setPageDrag(prev => (prev && prev.pointerId === event.pointerId ? null : prev));
   };
 
   // ── Block operations ────────────────────────────────────────────────────────
@@ -1024,6 +1488,7 @@ export default function LandingBuilderPage() {
           id: page.id,
           name: page.name,
           theme: page.theme,
+          hiddenFromNav: !!page.hiddenFromNav,
           meta: page.meta,
           blocks: page.blocks.map((block, index) => ({
             type: block.type,
@@ -1124,54 +1589,194 @@ export default function LandingBuilderPage() {
                         type="button"
                         onClick={() => setPageDropdownOpen(prev => !prev)}
                       >
-                        {renamingPageId === activePageId ? (
-                          <input
-                            className="pb_page-switcher__rename-input"
-                            value={pageNameDraft}
-                            autoFocus
-                            onClick={event => event.stopPropagation()}
-                            onChange={event => setPageNameDraft(event.target.value)}
-                            onBlur={() => handleCommitPageRename(activePageId)}
-                            onKeyDown={event => {
-                              if (event.key === 'Enter') {
-                                event.preventDefault();
-                                handleCommitPageRename(activePageId);
-                              }
-                              if (event.key === 'Escape') {
-                                setRenamingPageId(null);
-                                setPageNameDraft('');
-                              }
-                            }}
-                          />
-                        ) : (
-                          <span className="pb_page-switcher__label">{activePageName}</span>
-                        )}
+                        <span className="pb_page-switcher__label">{activePageName}</span>
                         <IconChevronDown size={14} />
                       </button>
 
-                      {pageDropdownOpen && pages.length > 1 && (
+                      {pageDropdownOpen && (
                         <div className="pb_page-switcher__menu">
-                          {pages.map(page => {
+                          {(() => {
+                            const draggablePages = pages.filter(p => p.id !== mainPageId);
+                            const dragOrigIdx = pageDrag
+                              ? draggablePages.findIndex(p => p.id === pageDrag.pageId)
+                              : -1;
+                            const dragRowEl = pageDrag ? pageRowRefs.current[pageDrag.pageId] : null;
+                            const dragRowHeight = dragRowEl ? dragRowEl.getBoundingClientRect().height + 8 : 48;
+                            const dragDeltaY = pageDrag ? pageDrag.currentY - pageDrag.startY : 0;
+                            const steps = pageDrag ? Math.round(dragDeltaY / dragRowHeight) : 0;
+                            const dragTargetIdx = pageDrag
+                              ? Math.max(0, Math.min(draggablePages.length - 1, dragOrigIdx + steps))
+                              : -1;
+                            return pages.map(page => {
                             const isActive = page.id === activePageId;
+                            const isMain = page.id === mainPageId;
+                            const isHidden = !!page.hiddenFromNav;
+                            const slug = page.meta?.slug || slugifyPageName(page.name);
+                            const path = isMain ? '/home' : `/${slug}`;
+                            const isDragging = pageDrag && pageDrag.pageId === page.id;
+                            const pageUrl = isMain
+                              ? `${window.location.origin}/${creatorPublicSlug}`
+                              : `${window.location.origin}/${creatorPublicSlug}/${slug}`;
+                            let rowStyle = null;
+                            if (pageDrag) {
+                              if (isDragging) {
+                                rowStyle = {
+                                  transform: `translateY(${dragDeltaY}px)`,
+                                  transition: 'none',
+                                  zIndex: 10,
+                                  boxShadow: '0 10px 24px rgba(0,0,0,0.18)',
+                                  cursor: 'grabbing',
+                                  pointerEvents: 'none'
+                                };
+                              } else if (!isMain) {
+                                const pageIdx = draggablePages.findIndex(p => p.id === page.id);
+                                if (pageIdx >= 0 && dragOrigIdx >= 0) {
+                                  let offset = 0;
+                                  if (dragTargetIdx > dragOrigIdx && pageIdx > dragOrigIdx && pageIdx <= dragTargetIdx) {
+                                    offset = -dragRowHeight;
+                                  } else if (dragTargetIdx < dragOrigIdx && pageIdx >= dragTargetIdx && pageIdx < dragOrigIdx) {
+                                    offset = dragRowHeight;
+                                  }
+                                  rowStyle = {
+                                    transform: `translateY(${offset}px)`,
+                                    transition: 'transform 200ms ease'
+                                  };
+                                }
+                              }
+                            }
                             return (
-                              <button
+                              <div
                                 key={page.id}
-                                className={`pb_page-switcher__item${isActive ? ' pb_page-switcher__item--active' : ''}`}
-                                type="button"
-                                onClick={() => {
-                                  handleSelectPage(page.id);
-                                  setPageDropdownOpen(false);
-                                }}
+                                ref={el => { if (el) pageRowRefs.current[page.id] = el; else delete pageRowRefs.current[page.id]; }}
+                                style={rowStyle || undefined}
+                                className={[
+                                  'pb_page-switcher__row',
+                                  isActive ? 'pb_page-switcher__row--active' : '',
+                                  isMain ? 'pb_page-switcher__row--main' : '',
+                                  isHidden ? 'pb_page-switcher__row--hidden' : '',
+                                  isDragging ? 'pb_page-switcher__row--dragging' : ''
+                                ].filter(Boolean).join(' ')}
+                                onPointerDown={event => handlePageRowPointerDown(event, page)}
+                                onPointerMove={event => handlePageRowPointerMove(event, page)}
+                                onPointerUp={event => handlePageRowPointerUp(event, page)}
+                                onPointerCancel={handlePageRowPointerCancel}
                               >
-                                {page.name}
-                              </button>
+                                <div
+                                  className="pb_page-switcher__row-main"
+                                  role="button"
+                                  tabIndex={0}
+                                  onClick={() => {
+                                    handleSelectPage(page.id);
+                                    setPageDropdownOpen(false);
+                                    setPageMenuOpenId(null);
+                                  }}
+                                  onKeyDown={event => {
+                                    if (event.key === 'Enter' || event.key === ' ') {
+                                      event.preventDefault();
+                                      handleSelectPage(page.id);
+                                      setPageDropdownOpen(false);
+                                      setPageMenuOpenId(null);
+                                    }
+                                  }}
+                                >
+                                  <span className="pb_page-switcher__row-lead">
+                                    {isMain ? <IconHome size={16} /> : (
+                                      <>
+                                        <span className="pb_page-switcher__row-grip" aria-hidden="true"><IconGrip size={14} /></span>
+                                        <IconFile size={16} />
+                                      </>
+                                    )}
+                                  </span>
+                                  <span className="pb_page-switcher__row-body">
+                                    <strong>{isMain ? 'home' : page.name}</strong>
+                                    <span>{path}</span>
+                                  </span>
+                                </div>
+                                <div
+                                  className="pb_page-switcher__row-menu-wrap"
+                                  ref={pageMenuOpenId === page.id ? pageMenuRef : null}
+                                >
+                                  <button
+                                    type="button"
+                                    className="pb_icon-btn"
+                                    onClick={event => {
+                                      event.stopPropagation();
+                                      setPageMenuOpenId(pageMenuOpenId === page.id ? null : page.id);
+                                    }}
+                                    aria-label="Page options"
+                                  >
+                                    <IconDots />
+                                  </button>
+                                  {pageMenuOpenId === page.id && (
+                                    <div
+                                      className="pb_dropdown pb_page-switcher__row-dropdown"
+                                      onClick={event => event.stopPropagation()}
+                                    >
+                                      <button onClick={() => {
+                                        setRenamingPageId(page.id);
+                                        setPageNameDraft(page.name);
+                                        setPageMenuOpenId(null);
+                                        if (page.id !== activePageId) handleSelectPage(page.id);
+                                        setPageDropdownOpen(false);
+                                      }}>
+                                        <IconEdit /> Rename page
+                                      </button>
+                                      <button onClick={() => {
+                                        window.open(pageUrl, '_blank', 'noopener,noreferrer');
+                                        setPageMenuOpenId(null);
+                                      }}>
+                                        <IconExternalLink /> Open in a new tab
+                                      </button>
+                                      <button onClick={() => {
+                                        navigator.clipboard?.writeText(pageUrl);
+                                        toast('Link copied!', 'success');
+                                        setPageMenuOpenId(null);
+                                      }}>
+                                        <IconLink /> Copy URL
+                                      </button>
+                                      {!isMain && (
+                                        <button onClick={() => {
+                                          handleTogglePageHidden(page.id);
+                                          setPageMenuOpenId(null);
+                                        }}>
+                                          {isHidden ? <IconEye /> : <IconEyeOff />}
+                                          {isHidden ? 'Show in navigation' : 'Hide from navigation'}
+                                        </button>
+                                      )}
+                                      {!isMain && pages.length > 1 && (
+                                        <>
+                                          <div className="pb_dropdown__divider" />
+                                          <button
+                                            className="pb_dropdown__danger"
+                                            onClick={() => {
+                                              handleDeletePage(page.id);
+                                              setPageMenuOpenId(null);
+                                            }}
+                                          >
+                                            <IconTrash /> Delete
+                                          </button>
+                                        </>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
                             );
-                          })}
+                          });
+                          })()}
                         </div>
                       )}
                     </div>
 
-                    <button className="pb_page-switcher__new" type="button" onClick={() => { handleAddPage(); setPageDropdownOpen(false); }}>
+                    <button
+                      className="pb_page-switcher__new"
+                      type="button"
+                      onClick={() => {
+                        setNewPageDraft('');
+                        setNewPagePopupOpen(true);
+                        setPageDropdownOpen(false);
+                      }}
+                    >
                       <IconPlus size={14} />
                       <span>New Page</span>
                     </button>
@@ -1486,6 +2091,121 @@ export default function LandingBuilderPage() {
           onSave={updates => saveBlockEdit(editingBlock._id, updates)}
           onClose={() => setEditingBlock(null)}
         />
+      )}
+      {managePagesOpen && (
+        <ManagePagesModal
+          pages={pages}
+          mainPageId={mainPageId}
+          creatorPublicSlug={creatorPublicSlug}
+          onClose={() => setManagePagesOpen(false)}
+          onReorder={handleReorderPages}
+          onRename={handleRenamePage}
+          onDelete={handleDeletePage}
+          onToggleHidden={handleTogglePageHidden}
+          onSetMain={handleSetMainPage}
+          onAdd={() => { handleAddPage(); setManagePagesOpen(false); }}
+          onCopyUrl={url => {
+            navigator.clipboard?.writeText(url);
+            toast('Link copied!', 'success');
+          }}
+        />
+      )}
+      {newPagePopupOpen && (
+        <div
+          className="pb_backdrop pb_backdrop--light"
+          onClick={event => event.target === event.currentTarget && setNewPagePopupOpen(false)}
+        >
+          <div className="pb_new-page-popup" role="dialog" aria-label="Create page">
+            <div className="pb_new-page-popup__header">
+              <h4>New page</h4>
+              <button
+                type="button"
+                className="pb_new-page-popup__close"
+                onClick={() => setNewPagePopupOpen(false)}
+                aria-label="Close"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+              </button>
+            </div>
+            <input
+              className="pb_new-page-popup__input"
+              autoFocus
+              placeholder="Page name"
+              value={newPageDraft}
+              onChange={event => setNewPageDraft(event.target.value)}
+              onKeyDown={event => {
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  handleAddPage(newPageDraft);
+                  setNewPagePopupOpen(false);
+                }
+                if (event.key === 'Escape') setNewPagePopupOpen(false);
+              }}
+            />
+            <button
+              type="button"
+              className="pb_new-page-popup__create"
+              onClick={() => {
+                handleAddPage(newPageDraft);
+                setNewPagePopupOpen(false);
+              }}
+            >
+              Create
+            </button>
+          </div>
+        </div>
+      )}
+      {renamingPageId && (
+        <div
+          className="pb_backdrop pb_backdrop--light"
+          onClick={event => {
+            if (event.target === event.currentTarget) {
+              setRenamingPageId(null);
+              setPageNameDraft('');
+            }
+          }}
+        >
+          <div className="pb_new-page-popup" role="dialog" aria-label="Rename page">
+            <div className="pb_new-page-popup__header">
+              <h4>Rename page</h4>
+              <button
+                type="button"
+                className="pb_new-page-popup__close"
+                onClick={() => {
+                  setRenamingPageId(null);
+                  setPageNameDraft('');
+                }}
+                aria-label="Close"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+              </button>
+            </div>
+            <input
+              className="pb_new-page-popup__input"
+              autoFocus
+              placeholder="Page name"
+              value={pageNameDraft}
+              onChange={event => setPageNameDraft(event.target.value)}
+              onKeyDown={event => {
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  handleCommitPageRename(renamingPageId);
+                }
+                if (event.key === 'Escape') {
+                  setRenamingPageId(null);
+                  setPageNameDraft('');
+                }
+              }}
+            />
+            <button
+              type="button"
+              className="pb_new-page-popup__create"
+              onClick={() => handleCommitPageRename(renamingPageId)}
+            >
+              Save
+            </button>
+          </div>
+        </div>
       )}
     </>
   );

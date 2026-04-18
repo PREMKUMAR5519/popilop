@@ -3,11 +3,7 @@ import ApiError from '../../utils/apiError.js';
 
 const META_SCOPES = [
   'pages_show_list',
-  'pages_read_engagement',
-  'instagram_basic',
-  'instagram_manage_insights',
-  'instagram_manage_messages',
-  'business_management'
+  'instagram_basic'
 ];
 
 const ensureMetaConfig = () => {
@@ -153,4 +149,3 @@ export default class MetaInstagramProvider {
     );
   }
 }
-

@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(npx vite *)",
-      "Bash(npm install *)"
+      "Bash(npm install *)",
+      "Bash(npx --no-install eslint client/src/pages/dashboard/LandingBuilderPage.jsx)",
+      "Bash(node -e \"require\\('@babel/parser'\\).parse\\(require\\('fs'\\).readFileSync\\('src/pages/dashboard/LandingBuilderPage.jsx','utf8'\\),{sourceType:'module',plugins:['jsx']}\\); console.log\\('OK'\\)\")"
     ]
   }
 }
